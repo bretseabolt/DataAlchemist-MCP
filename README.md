@@ -15,6 +15,7 @@ This is the most basic version of the application. Future releases will expand i
 ## 🚀 Technologies Used
 
 * **Language:** Python
+* **Frameworks:** LangGraph, LangChain, Pydantic, Model Context Protocol (MCP)
 * **Core Library:** Pandas (for data manipulation and analysis)
 * **Development Environment:** PyCharm
 
