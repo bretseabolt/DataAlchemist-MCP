@@ -1,0 +1,22 @@
+# PyCharm specific files
+.idea/
+
+# Python virtual environment
+venv/
+.venv/
+ENV/
+env/
+
+# Python bytecode and compiled files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+
+# Secret files
+.env

@@ -1,0 +1,11 @@
+{
+    "mcpServers": {
+      "data_alchemy": {
+        "command": "python",
+        "args": [
+          "/Users/brets/EDU/DataAlchemist-MCP/src/mcp_servers/data_alchemy.py"
+        ],
+        "transport": "stdio"
+      }
+    }
+}
