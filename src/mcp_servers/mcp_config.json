@@ -1,9 +1,9 @@
 {
     "mcpServers": {
-      "data_inspection_and_cleaning": {
+      "data_alchemist": {
         "command": "python",
         "args": [
-          "/Users/brets/EDU/DataAlchemist-MCP/src/mcp_servers/data_inspection_and_cleaning.py"
+          "/Users/brets/EDU/DataAlchemist-MCP/src/mcp_servers/data_alchemist.py"
         ],
         "transport": "stdio"
       }

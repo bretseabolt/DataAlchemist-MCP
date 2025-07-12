@@ -7,12 +7,16 @@ import pickle
 from dotenv import load_dotenv
 import io
 
+
 from sklearn.impute import SimpleImputer
-from sklearn.preprocessing import OrdinalEncoder, LabelEncoder, OneHotEncoder, StandardScaler, MinMaxScaler, RobustScaler
+from sklearn.preprocessing import OrdinalEncoder, OneHotEncoder, StandardScaler, MinMaxScaler, RobustScaler
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+from sklearn.model_selection import train_test_split
 
 load_dotenv()
 
-mcp = FastMCP("data_inspection_and_cleaning")
+mcp = FastMCP("data_alchemist")
 
 
 class DataAlchemist:
@@ -21,6 +25,13 @@ class DataAlchemist:
         self.data: Optional[pd.DataFrame] = None
         self.encoders: Dict[str, Any] = {}
         self.scalers: Dict[str, Any] = {}
+
+        self.X_train: Optional[pd.DataFrame] = None
+        self.X_test: Optional[pd.DataFrame] = None
+        self.y_train: Optional[pd.DataFrame] = None
+        self.y_test: Optional[pd.DataFrame] = None
+
+        self.model: Optional[Any] = None
 
         self.working_dir = os.environ.get("MCP_FILESYSTEM_DIR")
         if self.working_dir:
@@ -31,7 +42,9 @@ class DataAlchemist:
         if self.data is not None and self.session_file:
             try:
                 with open(self.session_file, "wb") as f:
-                    pickle.dump({'data': self.data, 'encoders': self.encoders, 'scalers': self.scalers}, f)
+                    pickle.dump({'data': self.data, 'encoders': self.encoders, 'scalers': self.scalers,
+                                 'X_train': self.X_train, 'X_test': self.X_test,
+                                 'y_train': self.y_train, 'y_test': self.y_test,'model': self.model}, f)
             except Exception as e:
                 print(f"Warning: Failed to save session data: {e}")
 
@@ -43,6 +56,11 @@ class DataAlchemist:
                     self.data = state.get('data')
                     self.encoders = state.get('encoders', {})
                     self.scalers = state.get('scalers', {})
+                    self.X_train = state.get('X_train')
+                    self.X_test = state.get('X_test')
+                    self.y_train = state.get('y_train')
+                    self.y_test = state.get('y_test')
+                    self.model = state.get('model')
                 return True
             except Exception as e:
                 print(f"Warning: Failed to load session data: {e}")
@@ -73,6 +91,11 @@ class DataAlchemist:
         self.data = None
         self.encoders = {}
         self.scalers = {}
+        self.X_train = None
+        self.X_test = None
+        self.y_train = None
+        self.y_test = None
+        self.model = None
         return "Session reset successfully. You can now load new data."
 
     async def save_to_csv(self, file_path: str) -> str:
@@ -96,7 +119,7 @@ class DataAlchemist:
 
         full_path = os.path.join(self.working_dir, file_path)
         if os.path.exists(full_path):
-            return "Error: File already exists at {full_path}. Choose a different name to avoid overwriting."
+            return f"Error: File already exists at {full_path}. Choose a different name to avoid overwriting."
 
         try:
             # Save the dataframe to a .csv file, excluding the pandas index
@@ -104,6 +127,7 @@ class DataAlchemist:
             return f"Dataframe successfully saved to {full_path}. The task is complete. Please ask the user for the next action."
         except Exception as e:
             return f"Error: Failed to save data to {full_path}: {e}"
+
 
     async def inspect_data(self, n_rows: int=5) -> str:
         """
@@ -330,6 +354,72 @@ class DataAlchemist:
             return f"Error dropping column(s) '{column}': {str(e)}"
 
 
+    async def split_data(self, target_column: str, test_size: float=0.2, random_state: int = 42) -> str:
+        """
+        Splits the data into training and testing sets.
+
+        Args:
+            target_column: The name of the column to be used as the target (y).
+            test_size: The proportion of the dataset to include in the test split.
+            random_state: Seed for the random number generator for reproducibility.
+        """
+        if self.data is None:
+            if not self._load_data_from_session():
+                return "Error: No data loaded. Please load data first."
+        if target_column not in self.data.columns:
+            return f"Error: target column {target_column} is not present in the dataset."
+
+        try:
+            X = self.data.drop(target_column, axis=1)
+            y = self.data[target_column]
+
+            self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(
+                X, y, test_size=test_size, random_state=random_state
+            )
+
+            self._save_data()
+
+            return (f"Data successfully split into training and testing sets.\n"
+                    f"Training set shape: {self.X_train.shape}\n"
+                    f"Testing set shape: {self.X_test.shape}")
+        except Exception as e:
+            return f"Error occurred during data splitting: {e}"
+
+    async def train_linear_regression(self) -> str:
+        """
+        Trains a linear regression model and evaluates its performance on the test data.
+        """
+        if self.X_train is None or self.y_train is None:
+            # Try to reload the session state as a fallback
+            if not self._load_data_from_session() or self.X_train is None or self.y_train is None:
+                return "Error: Data has not been split. Please split the data first."
+
+        try:
+            self.model = LinearRegression()
+            self.model.fit(self.X_train, self.y_train)
+
+            y_pred = self.model.predict(self.X_test)
+
+            r2 = r2_score(self.y_test, y_pred)
+            mae = mean_absolute_error(self.y_test, y_pred)
+            mse = mean_squared_error(self.y_test, y_pred)
+            rmse = mse ** 0.5
+
+            lr_model_report = f"""
+            Linear Regression model trained successfully.
+
+            --- MODEL PERFORMANCE ON TEST SET ---
+            R-Squared: {round(r2, 4)}
+            Mean Absolute Error (MAE): {round(mae, 4)}
+            Mean Squared Error (MSE): {round(mse, 4)}
+            Root Mean Squared Error (RMSE): {round(rmse, 4)}
+            """
+
+            return lr_model_report.strip()
+
+        except Exception as e:
+            return f"Error occurred during model training: {e}"
+
 session = DataAlchemist()
 
 @mcp.tool()
@@ -343,7 +433,7 @@ async def alchemy_load_data(file_path: str) -> str:
     return await session.load_data(file_path)
 
 @mcp.tool()
-async def data_alchemy_reset_session() -> str:
+async def alchemy_reset_session() -> str:
     """
     Reset the session for preprocessing by deleting the persisted data and clearing the current state.
     Use this to start fresh without previous modifications.
@@ -351,7 +441,7 @@ async def data_alchemy_reset_session() -> str:
     return await session.reset_session()
 
 @mcp.tool()
-async def data_alchemy_save_to_csv(file_path: str) -> str:
+async def alchemy_save_to_csv(file_path: str) -> str:
     """
     Saves the current state of the data (after cleaning/transformations) to a new .csv file.
 
@@ -359,6 +449,7 @@ async def data_alchemy_save_to_csv(file_path: str) -> str:
         file_path: The desired name for the output file (e.g., 'processed_data.csv').
     """
     return await session.save_to_csv(file_path)
+
 
 @mcp.tool()
 async def alchemy_inspect_data(n_rows: int) -> str:
@@ -417,6 +508,26 @@ async def alchemy_drop_columns(column: Union[str, List[str]]) -> str:
         column: Column name or list of column names to drop.
     """
     return await session.drop_columns(column)
+
+@mcp.tool()
+async def alchemy_split_data(target_column: str, test_size: float=0.2, random_state: int = 42) -> str:
+    """
+    Splits the data into training and testing sets.
+
+    Args:
+        target_column: The name of the column to be used as the target (y).
+        test_size: The proportion of the dataset to include in the test split.
+        random_state: Seed for the random number generator for reproducibility.
+    """
+    return await session.split_data(target_column, test_size, random_state)
+
+@mcp.tool()
+async def alchemy_train_linear_regression() -> str:
+    """
+    Trains a linear regression model and evaluates its performance on the test data.
+    """
+    return await session.train_linear_regression()
+
 
 if __name__ == "__main__":
     mcp.run(transport='stdio')
