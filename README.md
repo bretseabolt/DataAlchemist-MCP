@@ -17,7 +17,7 @@ This is the most basic version of the application. Future releases will expand i
 
 * **Language:** Python
 * **Frameworks:** LangGraph, LangChain, Pydantic, Model Context Protocol (MCP)
-* **Core Library:** Pandas (for data manipulation and analysis)
+* **Core Libraries:** Pandas, scikit-learn
 * **Development Environment:** PyCharm
 
 ## Usage
