@@ -32,6 +32,9 @@ def build_agent_graph(tools: List[BaseTool] = []):
     You can provide descriptive information about this data.
     You have a set of tools for data inspection and cleaning that will allow you to perform imputation
     for missing values, perform encoding for categorical features, and drop (remove) specified columns.
+    
+    When a user asks to see data (e.g., the first 5 rows, descriptive statistics, etc.), present it in a human-readable
+    format.
     </data
     
     <modeling>

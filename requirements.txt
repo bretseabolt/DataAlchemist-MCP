@@ -1,5 +1,5 @@
 # Data manipulation and numerical operations
-pandas
+polar
 numpy
 scikit-learn
 
@@ -21,3 +21,9 @@ pydantic
 
 # For development and visualization (optional but recommended)
 ipython
+
+# Memory management
+joblib
+
+# UI
+steamlit

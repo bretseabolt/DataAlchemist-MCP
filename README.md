@@ -6,10 +6,12 @@ Welcome to DataAlchemist-MCP, a tool for data analysis and manipulation. This pr
 
 DataAlchemist-MCP is designed to be a powerful and intuitive application for working with datasets. The long-term vision is to create a comprehensive tool that can perform a wide range of data operations, transformations, and analyses.
 
-**Current Version (v0.2.0):**
+**Current Version (v0.3.0):**
 * Loads a dataset from a .csv file
 * Provides a basic summary of the data, including key statistics.
-* Performs various imputation techniques for missing values
+* Performs various data preprocessing techniques
+* Splits data into training and test sets
+* Models data with a linear regression model
 
 This is the most basic version of the application. Future releases will expand its capabilities to include more advanced data manipulation and analysis features.
 
@@ -17,8 +19,9 @@ This is the most basic version of the application. Future releases will expand i
 
 * **Language:** Python
 * **Frameworks:** LangGraph, LangChain, Pydantic, Model Context Protocol (MCP)
-* **Core Libraries:** Pandas, scikit-learn
+* **Core Libraries:** Polar, scikit-learn
 * **Development Environment:** PyCharm
+* **User Interface:**: Streamlit
 
 ## Usage
 
@@ -26,7 +29,7 @@ To get started with DataAlchemist-MCP, follow these steps:
 
 1.  **Clone the repository:**
     ```bash
-    git clone <your-repository-url>
+    git clone <https://github.com/bretseabolt/DataAlchemist-MCP>
     ```
 2.  **Navigate to the project directory:**
     ```bash
@@ -38,12 +41,13 @@ To get started with DataAlchemist-MCP, follow these steps:
     ```
 4.  **Run the application:**
     ```bash
-    python client.py
+    python app.py
     ```
 
 ## Future Development
 
 The roadmap for DataAlchemist-MCP includes:
-* Implementing data cleaning and preprocessing functions.
+* Implementing more data cleaning and preprocessing functions.
 * Adding data visualization capabilities.
-* Introducing more advanced analytical operations.
+* Implementing feature engineering functions
+* Implementing more advanced models

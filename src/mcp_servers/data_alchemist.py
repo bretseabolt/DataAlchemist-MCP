@@ -1,11 +1,12 @@
-import pandas as pd
+import polars as pl
 import numpy as np
 from mcp.server.fastmcp import FastMCP
 from typing import Optional, Dict, Union, List, Any
 import os
-import pickle
+
+import joblib
 from dotenv import load_dotenv
-import io
+
 
 
 from sklearn.impute import SimpleImputer
@@ -22,49 +23,68 @@ mcp = FastMCP("data_alchemist")
 class DataAlchemist:
 
     def __init__(self):
-        self.data: Optional[pd.DataFrame] = None
+        self.data: Optional[pl.DataFrame] = None
         self.encoders: Dict[str, Any] = {}
         self.scalers: Dict[str, Any] = {}
 
-        self.X_train: Optional[pd.DataFrame] = None
-        self.X_test: Optional[pd.DataFrame] = None
-        self.y_train: Optional[pd.DataFrame] = None
-        self.y_test: Optional[pd.DataFrame] = None
+        self.X_train: Optional[pl.DataFrame] = None
+        self.X_test: Optional[pl.DataFrame] = None
+        self.y_train: Optional[pl.Series] = None
+        self.y_test: Optional[pl.Series] = None
 
         self.model: Optional[Any] = None
 
         self.working_dir = os.environ.get("MCP_FILESYSTEM_DIR")
         if self.working_dir:
             os.makedirs(self.working_dir, exist_ok=True) # Ensure directory exists
-        self.session_file = os.path.join(self.working_dir, "data_session.pkl") if self.working_dir else None
+        self.session_base = os.path.join(self.working_dir, "data_session") if self.working_dir else None
 
     def _save_data(self) -> None:
-        if self.data is not None and self.session_file:
+        if self.session_base and self.data is not None:
             try:
-                with open(self.session_file, "wb") as f:
-                    pickle.dump({'data': self.data, 'encoders': self.encoders, 'scalers': self.scalers,
-                                 'X_train': self.X_train, 'X_test': self.X_test,
-                                 'y_train': self.y_train, 'y_test': self.y_test,'model': self.model}, f)
+                data_parquet = self.session_base + "_data.parquet"
+                self.data.write_parquet(data_parquet)
+                if self.X_train is not None:
+                    x_train_parquet = self.session_base + "_x_train.parquet"
+                    self.X_train.write_parquet(x_train_parquet)
+                    x_test_parquet = self.session_base + "_x_test.parquet"
+                    self.X_test.write_parquet(x_test_parquet)
+                    y_train_parquet = self.session_base + "_y_train.parquet"
+                    pl.DataFrame(self.y_train).write_parquet(y_train_parquet)
+                    y_test_parquet = self.session_base + "_y_test.parquet"
+                    pl.DataFrame(self.y_test).write_parquet(y_test_parquet)
+
+                # Using Joblib for non-DataFrame State
+                session_joblib = self.session_base + ".joblib"
+                state = {'encoders': self.encoders, 'scalers': self.scalers, 'model': self.model}
+                joblib.dump(state, session_joblib)
+
             except Exception as e:
-                print(f"Warning: Failed to save session data: {e}")
+                print(f"Warning: Failed to save: {e}")
 
     def _load_data_from_session(self) -> bool:
-        if self.session_file and os.path.exists(self.session_file):
-            try:
-                with open(self.session_file, "rb") as f:
-                    state = pickle.load(f)
-                    self.data = state.get('data')
+        if self.session_base:
+            session_joblib = self.session_base + ".joblib"
+            if os.path.exists(session_joblib):
+                try:
+                    data_parquet = self.session_base + "_data.parquet"
+                    self.data = pl.read_parquet(data_parquet) if os.path.exists(data_parquet) else None
+                    x_train_parquet = self.session_base + "_x_train.parquet"
+                    self.X_train = pl.read_parquet(x_train_parquet) if os.path.exists(x_train_parquet) else None
+                    x_test_parquet = self.session_base + "_x_test.parquet"
+                    self.X_test = pl.read_parquet(x_test_parquet) if os.path.exists(x_test_parquet) else None
+                    y_train_parquet = self.session_base + "_y_train.parquet"
+                    self.y_train = pl.read_parquet(y_train_parquet).to_series(0) if os.path.exists(y_train_parquet) else None
+                    y_test_parquet = self.session_base + "_y_test.parquet"
+                    self.y_test = pl.read_parquet(y_test_parquet).to_series(0) if os.path.exists(y_test_parquet) else None
+                    state = joblib.load(session_joblib)
                     self.encoders = state.get('encoders', {})
                     self.scalers = state.get('scalers', {})
-                    self.X_train = state.get('X_train')
-                    self.X_test = state.get('X_test')
-                    self.y_train = state.get('y_train')
-                    self.y_test = state.get('y_test')
                     self.model = state.get('model')
-                return True
-            except Exception as e:
-                print(f"Warning: Failed to load session data: {e}")
-                return False
+                    return True
+                except Exception as e:
+                    print(f"Warning: Failed to load session data: {e}")
+                    return False
         return False
 
     async def load_data(self, file_path: str) -> str:
@@ -73,7 +93,7 @@ class DataAlchemist:
 
         full_path = os.path.join(self.working_dir, file_path)
         try:
-            self.data = pd.read_csv(full_path)
+            self.data = pl.read_csv(full_path, infer_schema_length=10000)
             self._save_data()
             return f"Data loaded from {full_path}"
         except Exception as e:
@@ -83,11 +103,29 @@ class DataAlchemist:
         """
         Reset the current session by deleting the presisted data file and clearing in-memory data
         """
-        if self.session_file and os.path.exists(self.session_file):
-            try:
-                os.remove(self.session_file)
-            except Exception as e:
-                return f"Error resetting session: {e}"
+        if self.session_base:
+            session_joblib = self.session_base + ".joblib"
+            if os.path.exists(session_joblib):
+                try:
+                    os.remove(session_joblib)
+                    # Remove Parquet files
+                    data_parquet = self.session_base + "_data.parquet"
+                    if os.path.exists(data_parquet):
+                        os.remove(data_parquet)
+                    x_train_parquet = self.session_base + "_x_train.parquet"
+                    if os.path.exists(x_train_parquet):
+                        os.remove(x_train_parquet)
+                    x_test_parquet = self.session_base + "_x_test.parquet"
+                    if os.path.exists(x_test_parquet):
+                        os.remove(x_test_parquet)
+                    y_train_parquet = self.session_base + "_y_train.parquet"
+                    if os.path.exists(y_train_parquet):
+                        os.remove(y_train_parquet)
+                    y_test_parquet = self.session_base + "_y_test.parquet"
+                    if os.path.exists(y_test_parquet):
+                        os.remove(y_test_parquet)
+                except Exception as e:
+                    return f"Error resetting session: {e}"
         self.data = None
         self.encoders = {}
         self.scalers = {}
@@ -123,7 +161,7 @@ class DataAlchemist:
 
         try:
             # Save the dataframe to a .csv file, excluding the pandas index
-            self.data.to_csv(full_path, index=False, encoding='utf-8')
+            self.data.write_csv(full_path)
             return f"Dataframe successfully saved to {full_path}. The task is complete. Please ask the user for the next action."
         except Exception as e:
             return f"Error: Failed to save data to {full_path}: {e}"
@@ -139,30 +177,28 @@ class DataAlchemist:
             if not self._load_data_from_session():
                 return "Error: No data loaded. Please load data first using 'load_data'."
 
-        df_head = self.data.head(n_rows).to_dict()
+        df_head = self.data.head(n_rows).to_dicts()
 
-        buffer = io.StringIO()
-        self.data.info(buf=buffer)
-        info_str = buffer.getvalue()
+        describe_str = str(self.data.describe())
 
-        dtypes_str = self.data.dtypes.to_string()
+        schema_str = str(self.data.schema)
 
-        null_values = self.data.isnull().sum().to_dict()
+        null_values = self.data.null_count().to_dicts()[0]
 
-        duplicate_rows = self.data.duplicated().sum()
+        duplicate_rows = self.data.is_duplicated().sum()
 
-        unique_columns = self.data.nunique().to_dict()
+        unique_columns = {col: self.data.select(pl.col(col).n_unique()).item() for col in self.data.columns}
 
         analysis_report = f"""
         DataFrame Analysis Report
         --- FIRST N ROWS ---
         {df_head}
         
-        --- INFO ---
-        {info_str}
+        --- DESCRIBE ---
+        {describe_str}
 
-        --- DATA TYPES ---
-        {dtypes_str}
+        --- SCHEMA (DATA TYPES) ---
+        {schema_str}
 
         --- MISSING VALUES ---
         {null_values}
@@ -206,12 +242,18 @@ class DataAlchemist:
                 continue
 
             try:
-                impute_strat = "most_frequent" if imputation_strat == "mode" else imputation_strat
+                if imputation_strat in ["mean", "median", "mode"]:
 
-                imputer = SimpleImputer(missing_values=np.nan, strategy=impute_strat)
-                self.data[[column_name]] = imputer.fit_transform(self.data[[column_name]])
+                    if imputation_strat == "mean":
+                        fill_value = self.data.select(pl.col(column_name).mean()).item()
+                    elif imputation_strat == "median":
+                        fill_value = self.data.select(pl.col(column_name).median()).item()
+                    else: # mode
+                        fill_value = self.data.select(pl.col(column_name).mode().first()).item()
+                    self.data = self.data.with_columns(pl.col(column_name).fill_null(fill_value))
 
-                successful_imputations.append(f"Successfully imputed column '{column_name}' with strategy '{imputation_strat}'.")
+                    successful_imputations.append(
+                        f"Successfully imputed column '{column_name}' with strategy '{imputation_strat}'.")
 
             except Exception as e:
                 errors.append(f"Failed to impute column '{column_name}' with strategy '{imputation_strat}': {e}.")
@@ -275,21 +317,15 @@ class DataAlchemist:
 
             try:
                 if encode_strat == "one_hot":
-
                     encoder = OneHotEncoder(handle_unknown="ignore", sparse_output=False)
-                    encoded_data = encoder.fit_transform(self.data[[column_name]])
-                    encoded_df = pd.DataFrame(data=encoded_data, columns=encoder.get_feature_names_out([column_name]))
-
-                    self.data = self.data.drop(column_name, axis=1)
-                    self.data = pd.concat([self.data.reset_index(drop=True), encoded_df.reset_index(drop=True)], axis=1)
-
+                    encoder.set_output(transform="polars")  # Enable Polars output
+                    encoded_data = encoder.fit_transform(self.data.select(pl.col(column_name)))  # Direct Polars input
+                    self.data = self.data.drop(column_name).hstack(encoded_data)
                     self.encoders[column_name] = encoder
-
                     successful_encodes.append(f"Successfully encoded column '{column_name}'.")
 
                 elif encode_strat == "ordinal":
                     custom_order = ordinal_map.get(column_name)
-
                     if custom_order:
                         encoder = OrdinalEncoder(
                             categories=[custom_order],
@@ -301,11 +337,10 @@ class DataAlchemist:
                             handle_unknown="use_encoded_value",
                             unknown_value=-1
                         )
-
-
-                    self.data[[column_name]] = encoder.fit_transform(self.data[[column_name]])
+                    encoder.set_output(transform="polars")
+                    encoded_col = encoder.fit_transform(self.data.select(pl.col(column_name)))
+                    self.data = self.data.with_columns(encoded_col)
                     self.encoders[column_name] = encoder
-
                     successful_encodes.append(f"Successfully encoded column '{column_name}'.")
 
 
@@ -347,7 +382,7 @@ class DataAlchemist:
             if not self._load_data_from_session():
                 return "Error: No data loaded. Please load data first using 'load_data'."
         try:
-            self.data = self.data.drop(columns=column, axis=1)
+            self.data = self.data.drop(column if isinstance(column, list) else [column])
             self._save_data()
             return f"Successfully dropped column(s) '{column}'."
         except Exception as e:
@@ -370,9 +405,11 @@ class DataAlchemist:
             return f"Error: target column {target_column} is not present in the dataset."
 
         try:
-            X = self.data.drop(target_column, axis=1)
-            y = self.data[target_column]
+            # Define features (X) and target (y) directly as Polars objects
+            X = self.data.drop(target_column)
+            y = self.data.select(pl.col(target_column)).to_series()
 
+            # scikit-learn's train_test_split now directly accepts Polars DataFrames and Series
             self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(
                 X, y, test_size=test_size, random_state=random_state
             )
@@ -396,13 +433,13 @@ class DataAlchemist:
 
         try:
             self.model = LinearRegression()
-            self.model.fit(self.X_train, self.y_train)
+            self.model.fit(self.X_train.to_numpy(), self.y_train.to_numpy())
 
-            y_pred = self.model.predict(self.X_test)
+            y_pred = self.model.predict(self.X_test.to_numpy())
 
-            r2 = r2_score(self.y_test, y_pred)
-            mae = mean_absolute_error(self.y_test, y_pred)
-            mse = mean_squared_error(self.y_test, y_pred)
+            r2 = r2_score(self.y_test.to_numpy(), y_pred)
+            mae = mean_absolute_error(self.y_test.to_numpy(), y_pred)
+            mse = mean_squared_error(self.y_test.to_numpy(), y_pred)
             rmse = mse ** 0.5
 
             lr_model_report = f"""
