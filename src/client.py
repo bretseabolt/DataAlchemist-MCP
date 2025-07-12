@@ -2,8 +2,8 @@ from langchain_mcp_adapters.client import MultiServerMCPClient
 from langgraph.graph import StateGraph
 from langchain_core.messages import HumanMessage, AIMessageChunk
 from typing import AsyncGenerator
-from src.mcp_servers.config import mcp_config
-from src.graph import build_agent_graph, AgentState
+from .mcp_servers.config import mcp_config
+from .graph import build_agent_graph, AgentState
 
 async def stream_graph_response(
         graph_input: AgentState, graph: StateGraph, config: dict = {}
