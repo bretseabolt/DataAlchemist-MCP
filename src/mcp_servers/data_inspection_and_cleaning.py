@@ -1,10 +1,14 @@
 import pandas as pd
+import numpy as np
 from mcp.server.fastmcp import FastMCP
-from typing import Optional
+from typing import Optional, Dict
 import os
 import pickle
 from dotenv import load_dotenv
 import io
+
+from sklearn.impute import SimpleImputer
+from sklearn.preprocessing import OrdinalEncoder, LabelEncoder, StandardScaler, MinMaxScaler, RobustScaler
 
 load_dotenv()
 
@@ -63,6 +67,34 @@ class DataAlchemist:
         self.data = None
         return "Session reset successfully. You can now load new data."
 
+    async def save_to_csv(self, file_path: str) -> str:
+        """
+        Saves the current state of the DataFrame to a .csv file in the working directory.
+
+        Args:
+            file_path: The name for the output .csv file.
+        """
+        if self.data is None:
+            # Try to load from session as a fallback
+            if not self._load_data_from_session():
+                return "Error: No data in memory to save. Please load data first."
+
+        if not self.working_dir:
+            return "ERROR: MCP_FILESYSTEM_DIR environment variable not set."
+
+        # Ensure the filename ends with .csv
+        if not file_path.lower().endswith('.csv'):
+            file_path += '.csv'
+
+        full_path = os.path.join(self.working_dir, file_path)
+
+        try:
+            # Save the dataframe to a .csv file, excluding the pandas index
+            self.data.to_csv(full_path, index=False)
+            return f"Dataframe successfully saved to {full_path}"
+        except Exception as e:
+            return f"Error: Failed to save data to {full_path}: {e}"
+
     async def inspect_data(self) -> str:
         """
         Initial data inspection
@@ -70,6 +102,8 @@ class DataAlchemist:
         if self.data is None:
             if not self._load_data_from_session():
                 return "Error: No data loaded. Please load data first using 'load_data'."
+
+        df_head = self.data.head().to_dict()
 
         buffer = io.StringIO()
         session.data.info(buf=buffer)
@@ -81,9 +115,13 @@ class DataAlchemist:
 
         duplicate_rows = session.data.duplicated().sum()
 
-        analysis_report = f"""
-        ✅ DataFrame Analysis Report
+        unique_columns = session.data.nunique().to_dict()
 
+        analysis_report = f"""
+        DataFrame Analysis Report
+        --- FIRST 5 ROWS ---
+        {df_head}
+        
         --- INFO ---
         {info_str}
 
@@ -95,9 +133,77 @@ class DataAlchemist:
 
         --- DUPLICATE ROWS ---
         Found {duplicate_rows} duplicate rows.
-
+        
+        --- UNIQUE VALUES OF EVERY COLUMN ---
+        {unique_columns}
+        
         """
         return analysis_report.strip()
+
+    async def impute_missing_values(self, imputation_map: Dict[str, str]) -> str:
+        """
+        Replaces missing values in a column by using a descriptive statistic (mean, median, or mode).
+
+        Args:
+            imputation_map: A dictionary that maps column names with imputation strategy.
+        """
+        if self.data is None:
+            if not self._load_data_from_session():
+                return "Error: No data loaded. Please load data first using 'load_data'."
+
+        if not imputation_map:
+            return "No imputation map provided; no changes made."
+
+
+        allowed_strategies = ["mean", "median", "mode"]
+        successful_imputations = []
+        errors = []
+
+        for column_name, imputation_strat in imputation_map.items():
+
+            if column_name not in self.data.columns:
+                errors.append(f"Error: Column '{column_name}' not found in the dataset.")
+                continue
+
+            if imputation_strat not in allowed_strategies:
+                errors.append(f"Invalid strategy '{imputation_strat}' for column '{column_name}'. Valid strategies are {allowed_strategies}")
+                continue
+
+            try:
+                impute_strat = "most_frequent" if imputation_strat == "mode" else imputation_strat
+
+                imputer = SimpleImputer(missing_values=np.nan, strategy=impute_strat)
+                self.data[[column_name]] = imputer.fit_transform(self.data[[column_name]])
+
+                successful_imputations.append(f"Successfully imputed column '{column_name}' with strategy '{imputation_strat}'.")
+
+            except Exception as e:
+                errors.append(f"Failed to impute column '{column_name}' with strategy '{imputation_strat}': {e}.")
+
+
+        self._save_data()
+
+        if len(successful_imputations) == len(imputation_map) and len(errors) == 0:
+            imputation_report = f"""
+            Successfully performed imputation for missing values in columns with no errors: {list(imputation_map.keys())}.
+            
+            --- SUCCESSFUL IMPUTATIONS ---
+            {'\n'.join(successful_imputations)}
+            
+            """
+        else:
+            imputation_report = f"""
+            Unsuccessfully performed imputation for missing values in columns: {list(imputation_map.keys())}.
+            
+            --- UNSUCCESSFUL IMPUTATIONS ---
+            {'\n'.join(errors)}
+            
+            --- SUCCESSFUL IMPUTATIONS ---
+            {'\n'.join(successful_imputations)}
+
+            """
+
+        return imputation_report.strip()
 
 session = DataAlchemist()
 
@@ -112,20 +218,46 @@ async def alchemy_load_data(file_path: str) -> str:
     return await session.load_data(file_path)
 
 @mcp.tool()
-async def alchemy_inspect_data() -> str:
-    """
-    Performs initial data inspection on the loaded DataFrame to understand the data.
-    Includes DataFrame info, data types of columns, descriptive statistics,
-    missing value counts, and duplicate rows.
-    """
-    return await session.inspect_data()
-
-@mcp.tool()
 async def alchemy_reset_session() -> str:
     """
     Reset the session by deleting the persisted data and clearing the current state.
     Use this to start fresh without previous modifications.
     """
     return await session.reset_session()
+
+@mcp.tool()
+async def alchemy_save_to_csv(file_path: str) -> str:
+    """
+    Saves the current state of the data (after cleaning/transformations) to a new .csv file.
+
+    Args:
+        file_path: The desired name for the output file (e.g., 'processed_data.csv').
+    """
+    return await session.save_to_csv(file_path)
+
+@mcp.tool()
+async def alchemy_inspect_data() -> str:
+    """
+    Performs initial data inspection on the loaded DataFrame to understand the data.
+    Includes first five rows of the data, DataFrame info, data types of columns, descriptive statistics,
+    missing value counts, and duplicate rows.
+    """
+    return await session.inspect_data()
+
+@mcp.tool()
+async def alchemy_impute_missing_values(imputation_map: Dict[str, str]) -> str:
+    """
+    Performs imputation on missing values in a column by using a descriptive statistic.
+    Takes in a dictionary that maps column names with imputation strategy.
+    The column MUST be present in the data frame and the imputation strategy MUST be mean, median, or mode.
+
+    Args:
+        imputation_map: Dictionary mapping column names with imputation strategy.
+
+    """
+
+    return await session.impute_missing_values(imputation_map)
+
+
 if __name__ == "__main__":
     mcp.run(transport='stdio')
