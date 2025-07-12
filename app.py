@@ -12,11 +12,11 @@ import nest_asyncio
 nest_asyncio.apply()
 
 from langchain_mcp_adapters.client import MultiServerMCPClient
-from src.graph import build_agent_graph, AgentState  # Adjust path if needed
-from src.mcp_servers.config import mcp_config  # Adjust path if needed
+from src.graph import build_agent_graph, AgentState
+from src.mcp_servers.config import mcp_config
 from langchain_core.messages import HumanMessage
 
-from src.client import stream_graph_response  # Adjust path if needed; assumes Streamlit file is in src/
+from src.client import stream_graph_response
 
 from dotenv import load_dotenv
 
@@ -63,7 +63,7 @@ if "graph_config" not in st.session_state:
     }
 
 if st.session_state.mcp_process is None:
-    mcp_server_path = "/Users/brets/EDU/DataAlchemist-MCP/src/mcp_servers/data_alchemist.py"  # Adjust to your actual path
+    mcp_server_path = "/Users/brets/EDU/DataAlchemist-MCP/src/mcp_servers/data_alchemist.py"
     st.session_state.mcp_process = subprocess.Popen(
         ["python", mcp_server_path],
         stdout=sys.stdout,
