@@ -1,0 +1,23 @@
+# Data manipulation and numerical operations
+pandas
+numpy
+scikit-learn
+
+# LangChain and LangGraph for the agent framework
+langchain
+langgraph
+langchain-core
+langchain-google-genai
+
+# MCP libraries
+langchain-mcp-adapters
+mcp-protocols
+
+# Environment variable management
+python-dotenv
+
+# Data validation
+pydantic
+
+# For development and visualization (optional but recommended)
+ipython
