@@ -1,14 +1,14 @@
 import pandas as pd
 import numpy as np
 from mcp.server.fastmcp import FastMCP
-from typing import Optional, Dict
+from typing import Optional, Dict, Union, List, Any
 import os
 import pickle
 from dotenv import load_dotenv
 import io
 
 from sklearn.impute import SimpleImputer
-from sklearn.preprocessing import OrdinalEncoder, LabelEncoder, StandardScaler, MinMaxScaler, RobustScaler
+from sklearn.preprocessing import OrdinalEncoder, LabelEncoder, OneHotEncoder, StandardScaler, MinMaxScaler, RobustScaler
 
 load_dotenv()
 
@@ -19,6 +19,8 @@ class DataAlchemist:
 
     def __init__(self):
         self.data: Optional[pd.DataFrame] = None
+        self.encoders: Dict[str, Any] = {}
+
         self.working_dir = os.environ.get("MCP_FILESYSTEM_DIR")
         if self.working_dir:
             os.makedirs(self.working_dir, exist_ok=True) # Ensure directory exists
@@ -91,19 +93,21 @@ class DataAlchemist:
         try:
             # Save the dataframe to a .csv file, excluding the pandas index
             self.data.to_csv(full_path, index=False)
-            return f"Dataframe successfully saved to {full_path}"
+            return f"Dataframe successfully saved to {full_path}. The task is complete. Please ask the user for the next action."
         except Exception as e:
             return f"Error: Failed to save data to {full_path}: {e}"
 
-    async def inspect_data(self) -> str:
+    async def inspect_data(self, n_rows: int=5) -> str:
         """
-        Initial data inspection
+        Initial data inspection. Includes first n rows of data, DataFrame info,
+        data types of each column, missing values per column, duplicate rows,
+        number of unique values per column.
         """
         if self.data is None:
             if not self._load_data_from_session():
                 return "Error: No data loaded. Please load data first using 'load_data'."
 
-        df_head = self.data.head().to_dict()
+        df_head = self.data.head(n_rows).to_dict()
 
         buffer = io.StringIO()
         session.data.info(buf=buffer)
@@ -119,7 +123,7 @@ class DataAlchemist:
 
         analysis_report = f"""
         DataFrame Analysis Report
-        --- FIRST 5 ROWS ---
+        --- FIRST N ROWS ---
         {df_head}
         
         --- INFO ---
@@ -205,6 +209,101 @@ class DataAlchemist:
 
         return imputation_report.strip()
 
+    async def encode_categorical_features(self, encode_map: Dict[str, str], ordinal_map: Optional[Dict[str, List[str]]] = None) -> str:
+        """
+        Uses encoders to encode categorical columns (One-hot or ordinal)
+
+        Args:
+            encode_map: A dictionary that maps column names with encoding strategy.
+            ordinal_map (Optional): For ordinal encoding only. A dictionary mapping the column
+            name to a list containing the desired category order. If none provided, order is inferred
+            alphabetically.
+        """
+        if self.data is None:
+            if not self._load_data_from_session():
+                return "Error: No data loaded. Please load data first using 'load_data'."
+
+        if not encode_map:
+            return "No encoder map provided; no changes made."
+
+        allowed_strategies = ["one_hot", "ordinal"]
+        successful_encodes = []
+        errors = []
+
+        for column_name, encode_strat in encode_map.items():
+
+            if column_name not in self.data.columns:
+                errors.append(f"Error: Column '{column_name}' not found in the dataset.")
+                continue
+
+            if encode_strat not in allowed_strategies:
+                errors.append(
+                    f"Invalid strategy '{encode_strat}' for column '{column_name}'. Valid strategies are {allowed_strategies}")
+                continue
+
+            try:
+                if encode_strat == "one_hot":
+
+                    encoder = OneHotEncoder(handle_unknown="ignore", sparse_output=False)
+                    encoded_data = encoder.fit_transform(self.data[[column_name]])
+                    encoded_df = pd.DataFrame(data=encoded_data, columns=encoder.get_feature_names_out([column_name]))
+
+                    self.data = self.data.drop(column_name, axis=1)
+                    self.data = pd.concat([self.data.reset_index(drop=True), encoded_df.reset_index(drop=True)], axis=1)
+
+                    self.encoders[column_name] = encoder
+
+                    successful_encodes.append(f"Successfully encoded column '{column_name}'.")
+
+                elif encode_strat == "ordinal":
+                    custom_order = ordinal_map.get(column_name)
+
+                    if custom_order:
+                        encoder = OrdinalEncoder(
+                            categories=[custom_order],
+                            handle_unknown="use_encoded_value",
+                            unknown_value=-1
+                        )
+                    else:
+                        encoder = OrdinalEncoder(
+                            handle_unknown="use_encoded_value",
+                            unknown_value=-1
+                        )
+
+
+                    self.data[[column_name]] = encoder.fit_transform(self.data[[column_name]])
+                    self.encoders[column_name] = encoder
+
+                    successful_encodes.append(f"Successfully encoded column '{column_name}'.")
+
+
+            except Exception as e:
+                errors.append(f"Failed to encode column '{column_name}' with strategy '{encode_strat}': {e}.")
+
+        self._save_data()
+
+        if len(successful_encodes) == len(encode_map) and len(errors) == 0:
+            encode_report = f"""
+            Successfully performed encoding with no errors in: {list(encode_map.keys())}.
+
+            --- SUCCESSFUL ENCODES ---
+            {'\n'.join(successful_encodes)}
+
+            """
+        else:
+            encode_report = f"""
+            Unsuccessfully performed encoding in columns: {list(encode_map.keys())}.
+
+            --- UNSUCCESSFUL ENCODES ---
+            {'\n'.join(errors)}
+
+            --- SUCCESSFUL ENCODES ---
+            {'\n'.join(successful_encodes)}
+
+            """
+
+        return encode_report.strip()
+
 session = DataAlchemist()
 
 @mcp.tool()
@@ -236,13 +335,19 @@ async def alchemy_save_to_csv(file_path: str) -> str:
     return await session.save_to_csv(file_path)
 
 @mcp.tool()
-async def alchemy_inspect_data() -> str:
+async def alchemy_inspect_data(n_rows: int) -> str:
     """
     Performs initial data inspection on the loaded DataFrame to understand the data.
-    Includes first five rows of the data, DataFrame info, data types of columns, descriptive statistics,
+    Includes n rows of the data, DataFrame info, data types of columns, descriptive statistics,
     missing value counts, and duplicate rows.
+
+    Args:
+        n_rows: the amount of rows to show (.head())
+
+    Returns:
+        Report in the form of a formatted string that summarizes the inspection.
     """
-    return await session.inspect_data()
+    return await session.inspect_data(n_rows)
 
 @mcp.tool()
 async def alchemy_impute_missing_values(imputation_map: Dict[str, str]) -> str:
@@ -254,9 +359,28 @@ async def alchemy_impute_missing_values(imputation_map: Dict[str, str]) -> str:
     Args:
         imputation_map: Dictionary mapping column names with imputation strategy.
 
+    Returns:
+        Report in the form of a formatted string that summarizes the imputation results.
     """
 
     return await session.impute_missing_values(imputation_map)
+
+@mcp.tool()
+async def alchemy_encode_categorical_features(encode_map: Dict[str, str], ordinal_map: Optional[Dict[str, List[str]]]) -> str:
+    """
+    Encodes categorical features using 'one-hot' or 'ordinal' encoding.
+
+    Args:
+        encode_map: Dictionary mapping column names with the encoding strategy.
+                    Ex: {"education_level": "ordinal", "city": "one-hot"}
+        ordinal_map (Optional): **REQUIRED if using 'ordinal' strategy with a specific order.**
+                                Dictionary mapping the column name with a list of categories in the
+                                correctly implied order, from lowest to highest. If a list is not provided,
+                                order will be inferred alphabetically
+                                Ex: {"education_level": ["High School", "Bachelors", "Masters", PhD]}
+
+    """
+    return await session.encode_categorical_features(encode_map, ordinal_map)
 
 
 if __name__ == "__main__":

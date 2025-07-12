@@ -30,7 +30,8 @@ def build_agent_graph(tools: List[BaseTool] = []):
     <data>
     When the user refers to the data for the project, they are referring to data within the working directory.
     You can provide descriptive information about this data.
-    You have a set of tools called data alchemy that will allow you to interact with the data.
+    You have a set of tools called data_inspection_and_cleaning that will allow you to perform imputation
+    for missing values and perform encoding for categorical features..
     You must always first load data into the session before you can do anything with it.
     </data
     
