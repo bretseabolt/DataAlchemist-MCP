@@ -11,6 +11,7 @@ langchain-google-genai
 
 # MCP libraries
 langchain-mcp-adapters
+mcp
 
 # Environment variable management
 python-dotenv

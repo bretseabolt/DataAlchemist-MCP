@@ -47,7 +47,7 @@ async def stream_graph_response(
             continue
 
 
-async  def main():
+async def main():
     """
     Initialize the MCP client and run the agent conversation loop.
 

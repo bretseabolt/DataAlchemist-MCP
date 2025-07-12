@@ -20,17 +20,18 @@ class DataAlchemist:
     def __init__(self):
         self.data: Optional[pd.DataFrame] = None
         self.encoders: Dict[str, Any] = {}
+        self.scalers: Dict[str, Any] = {}
 
         self.working_dir = os.environ.get("MCP_FILESYSTEM_DIR")
         if self.working_dir:
             os.makedirs(self.working_dir, exist_ok=True) # Ensure directory exists
-        self.session_file = os.path.join(self.working_dir, "session_data.pkl") if self.working_dir else None
+        self.session_file = os.path.join(self.working_dir, "data_session.pkl") if self.working_dir else None
 
     def _save_data(self) -> None:
         if self.data is not None and self.session_file:
             try:
                 with open(self.session_file, "wb") as f:
-                    pickle.dump(self.data, f)
+                    pickle.dump({'data': self.data, 'encoders': self.encoders, 'scalers': self.scalers}, f)
             except Exception as e:
                 print(f"Warning: Failed to save session data: {e}")
 
@@ -38,7 +39,10 @@ class DataAlchemist:
         if self.session_file and os.path.exists(self.session_file):
             try:
                 with open(self.session_file, "rb") as f:
-                    self.data = pickle.load(f)
+                    state = pickle.load(f)
+                    self.data = state.get('data')
+                    self.encoders = state.get('encoders', {})
+                    self.scalers = state.get('scalers', {})
                 return True
             except Exception as e:
                 print(f"Warning: Failed to load session data: {e}")
@@ -67,6 +71,8 @@ class DataAlchemist:
             except Exception as e:
                 return f"Error resetting session: {e}"
         self.data = None
+        self.encoders = {}
+        self.scalers = {}
         return "Session reset successfully. You can now load new data."
 
     async def save_to_csv(self, file_path: str) -> str:
@@ -89,10 +95,12 @@ class DataAlchemist:
             file_path += '.csv'
 
         full_path = os.path.join(self.working_dir, file_path)
+        if os.path.exists(full_path):
+            return "Error: File already exists at {full_path}. Choose a different name to avoid overwriting."
 
         try:
             # Save the dataframe to a .csv file, excluding the pandas index
-            self.data.to_csv(full_path, index=False)
+            self.data.to_csv(full_path, index=False, encoding='utf-8')
             return f"Dataframe successfully saved to {full_path}. The task is complete. Please ask the user for the next action."
         except Exception as e:
             return f"Error: Failed to save data to {full_path}: {e}"
@@ -110,16 +118,16 @@ class DataAlchemist:
         df_head = self.data.head(n_rows).to_dict()
 
         buffer = io.StringIO()
-        session.data.info(buf=buffer)
+        self.data.info(buf=buffer)
         info_str = buffer.getvalue()
 
-        dtypes_str = session.data.dtypes.to_string()
+        dtypes_str = self.data.dtypes.to_string()
 
-        null_values = session.data.isnull().sum().to_dict()
+        null_values = self.data.isnull().sum().to_dict()
 
-        duplicate_rows = session.data.duplicated().sum()
+        duplicate_rows = self.data.duplicated().sum()
 
-        unique_columns = session.data.nunique().to_dict()
+        unique_columns = self.data.nunique().to_dict()
 
         analysis_report = f"""
         DataFrame Analysis Report
@@ -304,12 +312,30 @@ class DataAlchemist:
 
         return encode_report.strip()
 
+    async def drop_columns(self, column: Union[str, List[str]]) -> str:
+        """
+        Drops columns in a DataFrame.
+
+        Args:
+            column: Column name or list of column names to drop.
+        """
+        if self.data is None:
+            if not self._load_data_from_session():
+                return "Error: No data loaded. Please load data first using 'load_data'."
+        try:
+            self.data = self.data.drop(columns=column, axis=1)
+            self._save_data()
+            return f"Successfully dropped column(s) '{column}'."
+        except Exception as e:
+            return f"Error dropping column(s) '{column}': {str(e)}"
+
+
 session = DataAlchemist()
 
 @mcp.tool()
 async def alchemy_load_data(file_path: str) -> str:
     """
-    Load data from a file into the session
+    Load data from a file into the session for data preprocessing.
 
     Args:
         file_path: Path of the file to load
@@ -317,15 +343,15 @@ async def alchemy_load_data(file_path: str) -> str:
     return await session.load_data(file_path)
 
 @mcp.tool()
-async def alchemy_reset_session() -> str:
+async def data_alchemy_reset_session() -> str:
     """
-    Reset the session by deleting the persisted data and clearing the current state.
+    Reset the session for preprocessing by deleting the persisted data and clearing the current state.
     Use this to start fresh without previous modifications.
     """
     return await session.reset_session()
 
 @mcp.tool()
-async def alchemy_save_to_csv(file_path: str) -> str:
+async def data_alchemy_save_to_csv(file_path: str) -> str:
     """
     Saves the current state of the data (after cleaning/transformations) to a new .csv file.
 
@@ -382,6 +408,15 @@ async def alchemy_encode_categorical_features(encode_map: Dict[str, str], ordina
     """
     return await session.encode_categorical_features(encode_map, ordinal_map)
 
+@mcp.tool()
+async def alchemy_drop_columns(column: Union[str, List[str]]) -> str:
+    """
+    Drops/removes columns in a DataFrame.
+
+    Args:
+        column: Column name or list of column names to drop.
+    """
+    return await session.drop_columns(column)
 
 if __name__ == "__main__":
     mcp.run(transport='stdio')
