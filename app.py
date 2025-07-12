@@ -63,7 +63,7 @@ if "graph_config" not in st.session_state:
     }
 
 if st.session_state.mcp_process is None:
-    mcp_server_path = "/Users/brets/EDU/DataAlchemist-MCP/src/mcp_servers/data_alchemist.py"
+    mcp_server_path = "/DataAlchemist-MCP/src/mcp_servers/data_alchemist.py"
     st.session_state.mcp_process = subprocess.Popen(
         ["python", mcp_server_path],
         stdout=sys.stdout,
