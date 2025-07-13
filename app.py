@@ -8,6 +8,7 @@ import signal
 import sys
 from typing import AsyncGenerator
 import nest_asyncio
+import polars as pl
 
 nest_asyncio.apply()
 
@@ -48,6 +49,17 @@ def run_async_gen_in_thread(async_gen: AsyncGenerator[str, None]) -> str:
 
 
 st.title("Data Alchemist")
+
+st.sidebar.title("Current DataFrame")
+data_parquet = os.path.join(MCP_FILESYSTEM_DIR, "data_session_data.parquet")
+if os.path.exists(data_parquet):
+    try:
+        df = pl.read_parquet(data_parquet)
+        st.sidebar.dataframe(df, use_container_width=True)
+    except Exception as e:
+        st.sidebar.error(f"Error loading data: {e}")
+else:
+    st.sidebar.info("No data loaded yet.")
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -105,6 +117,7 @@ if uploaded_file is not None:
         )
         response = run_async_gen_in_thread(async_gen)
         st.session_state.messages.append({"role": "assistant", "content": response})
+        st.rerun()
     else:
         st.warning("File already exists. Please choose a different file or reset session.")
 
@@ -152,7 +165,7 @@ if prompt := st.chat_input("Ask about your data..."):
         message_placeholder.markdown(full_response)
 
     st.session_state.messages.append({"role": "assistant", "content": full_response})
-
+    st.rerun()
 
 def cleanup():
     if st.session_state.mcp_process:
