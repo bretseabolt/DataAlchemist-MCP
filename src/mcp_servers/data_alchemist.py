@@ -300,7 +300,7 @@ class DataAlchemist:
         if not encode_map:
             return "No encoder map provided; no changes made."
 
-        allowed_strategies = ["one_hot", "ordinal"]
+        allowed_strategies = ["one_hot", "one-hot", "ordinal"]
         successful_encodes = []
         errors = []
 
@@ -316,7 +316,7 @@ class DataAlchemist:
                 continue
 
             try:
-                if encode_strat == "one_hot":
+                if encode_strat == "one_hot" or encode_strat == "one-hot":
                     encoder = OneHotEncoder(handle_unknown="ignore", sparse_output=False)
                     encoder.set_output(transform="polars")  # Enable Polars output
                     encoded_data = encoder.fit_transform(self.data.select(pl.col(column_name)))  # Direct Polars input
@@ -370,6 +370,86 @@ class DataAlchemist:
             """
 
         return encode_report.strip()
+
+    async def scale_numeric(self, scale_map: Dict[str, str]) -> str:
+        """
+        Scales numerical features independently on train and test sets.
+        Fits scalers on training data only, then transforms both train and test.
+
+        Args:
+            scale_map: A dictionary that maps column names with scaling strategy.
+        """
+        if self.X_train is None or self.X_test is None:
+            if not self._load_data_from_session() or self.X_train is None:
+                return "Error: Data has not been split. Please splt the data first using 'split_data.'."
+
+        if not scale_map:
+            return "No scaling map provided; no changes made."
+
+        allowed_strategies = ["standard", "minmax", "robust"]
+        successful_scales = []
+        errors = []
+
+        for column_name, scale_strat in scale_map.items():
+
+            if column_name not in self.X_train.columns:
+                errors.append(f"Error: Column '{column_name}' not found in the dataset.")
+                continue
+
+            if scale_strat not in allowed_strategies:
+                errors.append(
+                    f"Invalid strategy '{scale_strat}' for column '{column_name}'. Valid strategies are {allowed_strategies}")
+                continue
+
+            try:
+                if scale_strat == "standard":
+                    scaler = StandardScaler()
+                elif scale_strat == "minmax":
+                    scaler = MinMaxScaler()
+                else: # robust
+                    scaler = RobustScaler()
+
+                scaler.set_output(transform="polars")
+
+                train_col_df = self.X_train.select(pl.col(column_name))
+                scaler.fit(train_col_df)
+
+                scaled_train = scaler.transform(train_col_df)
+                self.X_train = self.X_train.with_columns(scaled_train)
+
+                test_col_df = self.X_test.select(pl.col(column_name))
+                scaled_test = scaler.transform(test_col_df)
+                self.X_test = self.X_test.with_columns(scaled_test)
+
+                self.scalers[column_name] = scaler
+                successful_scales.append(f"Successfully scaled column '{column_name}'.")
+
+            except Exception as e:
+                errors.append(f"Failed to scale column '{column_name}' with strategy '{scale_strat}': {e}.")
+
+        self._save_data()
+
+        if len(successful_scales) == len(scale_map) and len(errors) == 0:
+            scale_report = f"""
+            Successfully performed scaling with no errors in: {list(scale_map.keys())}.
+
+            --- SUCCESSFUL SCALES ---
+            {'\n'.join(successful_scales)}
+
+            """
+        else:
+            scale_report = f"""
+            Unsuccessfully performed scaling in columns: {list(scale_map.keys())}.
+
+            --- UNSUCCESSFUL SCALES ---
+            {'\n'.join(errors)}
+
+            --- SUCCESSFUL SCALES ---
+            {'\n'.join(successful_scales)}
+
+            """
+
+        return scale_report.strip()
 
     async def drop_columns(self, column: Union[str, List[str]]) -> str:
         """
@@ -536,6 +616,18 @@ async def alchemy_encode_categorical_features(encode_map: Dict[str, str], ordina
     """
     return await session.encode_categorical_features(encode_map, ordinal_map)
 
+
+@mcp.tool()
+async def alchemy_scale_numeric(scale_map: Dict[str, str]) -> str:
+    """
+    Scales numerical features independently on train and test sets.
+    Fits scalers on training data only, then transforms both train and test.
+
+    Args:
+        scale_map: A dictionary that maps column names with scaling strategy.
+    """
+
+    return await session.scale_numeric(scale_map)
 @mcp.tool()
 async def alchemy_drop_columns(column: Union[str, List[str]]) -> str:
     """

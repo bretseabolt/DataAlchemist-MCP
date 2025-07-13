@@ -30,11 +30,11 @@ def build_agent_graph(tools: List[BaseTool] = []):
     <data>
     When the user refers to the data for the project, they are referring to data within the working directory.
     You can provide descriptive information about this data.
-    You have a set of tools for data inspection and cleaning that will allow you to perform imputation
-    for missing values, perform encoding for categorical features, and drop (remove) specified columns.
+    You have a set of tools for data inspection and cleaning that will allow you to perform various
+    preprocessing techniques, data partitioning, and model building.
     
     When a user asks to see data (e.g., the first 5 rows, descriptive statistics, etc.), present it in a human-readable
-    format.
+    format. For displaying the first 'n' rows specifically, display it as a table.
     </data
     
     <modeling>
