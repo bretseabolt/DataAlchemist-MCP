@@ -7,13 +7,11 @@ import os
 import joblib
 from dotenv import load_dotenv
 
-
-
-from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import OrdinalEncoder, OneHotEncoder, StandardScaler, MinMaxScaler, RobustScaler
-from sklearn.linear_model import LinearRegression
+from sklearn.linear_model import LinearRegression, LogisticRegression
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score, classification_report
 
 load_dotenv()
 
@@ -126,6 +124,15 @@ class DataAlchemist:
                         os.remove(y_test_parquet)
                 except Exception as e:
                     return f"Error resetting session: {e}"
+
+        if self.working_dir:
+            try:
+                for file in os.listdir(self.working_dir):
+                    if file.endswith(".csv"):
+                        os.remove(os.path.join(self.working_dir, file))
+            except Exception as e:
+                return f"Error deleting. .csv files during rest: {e}"
+
         self.data = None
         self.encoders = {}
         self.scalers = {}
@@ -507,7 +514,6 @@ class DataAlchemist:
         Trains a linear regression model and evaluates its performance on the test data.
         """
         if self.X_train is None or self.y_train is None:
-            # Try to reload the session state as a fallback
             if not self._load_data_from_session() or self.X_train is None or self.y_train is None:
                 return "Error: Data has not been split. Please split the data first."
 
@@ -537,16 +543,82 @@ class DataAlchemist:
         except Exception as e:
             return f"Error occurred during model training: {e}"
 
+    async def train_logistic_regression(self, penalty: Optional[str] = 'l2', l1_ratio: Optional[float] = None) -> str:
+        """
+            Trains a logistic regression model with optional penalty ('l1', 'l2', 'elasticnet', or None) and evaluates its performance on the test data.
+            For 'elasticnet', optionally provide l1_ratio (0-1; defaults to 0.5).
+
+            Args:
+                penalty: The regularization penalty to use (optional; defaults to 'l2').
+                l1_ratio: The Elastic-Net mixing parameter (optional; only for 'elasticnet').
+            """
+        if self.X_train is None or self.y_train is None:
+            if not self._load_data_from_session() or self.X_train is None or self.y_train is None:
+                return "Error: Data has not been split. Please split the data first."
+
+        try:
+            penalty_solver_map = {
+                'l1': 'liblinear',
+                'l2': 'lbfgs',
+                'elasticnet': 'saga',
+                None: 'lbfgs',
+            }
+
+            solver = penalty_solver_map[penalty]
+
+            extra_kwargs = {'l1_ratio': l1_ratio if l1_ratio is not None else 0.5} if penalty == 'elasticnet' else {}
+
+            self.model = LogisticRegression(penalty=penalty, solver=solver, max_iter=1000, **extra_kwargs)
+            self.model.fit(self.X_train.to_numpy(), self.y_train.to_numpy())
+
+            y_pred = self.model.predict(self.X_test.to_numpy())
+
+            if self.y_train.dtype == pl.Categorical:
+                target_names = self.y_train.cat.get_categories().to_list()
+            elif self.y_train.dtype in (pl.Utf8, pl.String):
+                target_names = self.y_train.unique().sort().to_list()
+            else:
+                target_names = self.y_train.unique().sort().cast(pl.String).to_list()
+
+            class_report = classification_report(self.y_test.to_numpy(), y_pred,
+                                                 target_names=target_names if target_names else None)
+
+            acc = accuracy_score(self.y_test.to_numpy(), y_pred)
+
+            self._save_data()
+
+            report = f"""
+            Logistic Regression model trained successfully.
+    
+            --- MODEL PERFORMANCE ON TEST SET ---
+            
+            "Accuracy": {round(acc, 4)}
+            
+            --- CLASSIFICATION REPORT ---
+            
+            {class_report}
+            
+            """
+
+            return report.strip()
+
+        except KeyError:
+            return f"Error: invalid penalty '{penalty}. Supported: 'l1', 'l2', 'elasticnet', None."
+        except Exception as e:
+            return f"Error occurred during model training: {e}"
+
+
+
 session = DataAlchemist()
 
 @mcp.tool()
 async def alchemy_load_data(file_path: str) -> str:
     """
-    Load data from a file into the session for data preprocessing.
+Load data from a file into the session for data preprocessing.
 
-    Args:
-        file_path: Path of the file to load
-    """
+Args:
+    file_path: Path of the file to load
+"""
     return await session.load_data(file_path)
 
 @mcp.tool()
@@ -657,6 +729,17 @@ async def alchemy_train_linear_regression() -> str:
     """
     return await session.train_linear_regression()
 
+@mcp.tool()
+async def alchemy_train_logistic_regression(penalty: Optional[str] = 'l2', l1_ratio: Optional[float] = None) -> str:
+    """
+    Trains a logistic regression model with optional penalty ('l1', 'l2', 'elasticnet', or None) and evaluates its performance on the test data.
+    For 'elasticnet', optionally provide l1_ratio (0-1; defaults to 0.5).
+
+    Args:
+        penalty: The regularization penalty to use (optional; defaults to 'l2').
+        l1_ratio: The Elastic-Net mixing parameter (optional; only for 'elasticnet').
+    """
+    return await session.train_logistic_regression(penalty, l1_ratio)
 
 if __name__ == "__main__":
     mcp.run(transport='stdio')

@@ -41,7 +41,7 @@ To get started with DataAlchemist-MCP, follow these steps:
     ```
 4.  **Run the application:**
     ```bash
-    python app.py
+    python main_page.py
     ```
 
 ## Future Development

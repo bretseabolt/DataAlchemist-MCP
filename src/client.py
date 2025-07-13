@@ -73,7 +73,7 @@ async def main():
             break
 
         print("\n ----  USER  ---- \n\n", user_input)
-        print("\n ----  ASSISTANT  ---- \n\n")
+        print("\n ----  DATA ALCHEMIST  ---- \n\n")
 
         async for response in stream_graph_response(
             graph_input = AgentState(messages=[HumanMessage(content=user_input)]),

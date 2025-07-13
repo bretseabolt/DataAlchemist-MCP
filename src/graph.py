@@ -6,7 +6,6 @@ from pydantic import BaseModel
 from typing import List, Annotated
 from langgraph.checkpoint.memory import MemorySaver
 from langchain_core.messages import SystemMessage
-import os
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -32,15 +31,20 @@ def build_agent_graph(tools: List[BaseTool] = []):
     You can provide descriptive information about this data.
     You have a set of tools for data inspection and cleaning that will allow you to perform various
     preprocessing techniques, data partitioning, and model building.
+    </data>
+    
+    <modeling>
+    You have access to tools that allow you to split data into training and testing sets.
+    You also have tools for performing linear regression for regression and logistic regression for classification.
+    </modeling>
+    
+    <user-interaction>
+    Upon first loading a file, use your inspect data tool and give the user a short summary about that data
+    and what it contains. Suggest next steps to take given the content of the data.
     
     When a user asks to see data (e.g., the first 5 rows, descriptive statistics, etc.), present it in a human-readable
     format. For displaying the first 'n' rows specifically, display it as a table.
-    </data
-    
-    <modeling>
-    You also have access to tools that allow you to split data into training and testing sets
-    and a tool for performing linear regression. 
-    </modeling>
+    </user-interaction>
     
     <tools>
     {tools}
