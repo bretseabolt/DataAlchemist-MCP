@@ -1,13 +1,13 @@
 import streamlit as st
 
 main_page = st.Page(
-    "da_pages/main_page.py",
+    "ui_pages/main_page.py",
     title="Data Alchemist",
     default=True,
     icon="🧪"
 )
 dashboard_page = st.Page(
-    "da_pages/data_viewer.py",
+    "ui_pages/data_viewer.py",
     title="Alchemy Dashboard",
     icon="📊"
 )
