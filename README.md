@@ -4,7 +4,7 @@
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Streamlit App](https://img.shields.io/badge/Streamlit-App-red.svg)](https://streamlit.io/)
 
-Data Alchemist is an interactive data science tool built with Streamlit, LangGraph, LangChain, and Model Context Protocol (MCP). It enables users to upload CSV files, perform data preprocessing, analysis, and simple machine learning tasks through a conversational AI agent. The tool leverages Polars for efficient data handling, scikit-learn for modeling, and MCP servers for modular tool integration, providing a seamless workflow for data exploration and modeling.
+Data Alchemist is an interactive data science tool built with Streamlit, LangGraph, LangChain, and Model Context Protocol (MCP). It enables users to upload CSV or Excel files, perform data preprocessing, analysis, and simple machine learning tasks through a conversational AI agent. The tool leverages Polars for efficient data handling, scikit-learn for modeling, and MCP servers for modular tool integration, providing a seamless workflow for data exploration and modeling.
 
 ## Features
 
