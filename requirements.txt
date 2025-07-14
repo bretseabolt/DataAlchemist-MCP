@@ -1,0 +1,12 @@
+langchain
+langgraph
+langchain-google-genai
+mcp
+langchain-core
+
+polars
+numpy
+scikit-learn
+joblib
+
+dotenv
