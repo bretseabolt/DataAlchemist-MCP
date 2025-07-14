@@ -91,7 +91,13 @@ class DataAlchemist:
 
         full_path = os.path.join(self.working_dir, file_path)
         try:
-            self.data = pl.read_csv(full_path, infer_schema_length=10000)
+            if file_path.lower().endwith('.csv'):
+                self.data = pl.read_csv(full_path, infer_schema_length=10000)
+            elif file_path.lower().endswith('.xlsx'):
+                self.data = pl.read_excel(full_path, sheet_id=0)
+            else:
+                return f"Error: Unsupported file format for {file_path}. Only .csv and .xlsx are supported."
+
             self._save_data()
             return f"Data loaded from {full_path}"
         except Exception as e:
@@ -99,7 +105,7 @@ class DataAlchemist:
 
     async def reset_session(self) -> str:
         """
-        Reset the current session by deleting the presisted data file and clearing in-memory data
+        Reset the current session by deleting the persisted data file and clearing in-memory data
         """
         if self.session_base:
             session_joblib = self.session_base + ".joblib"
@@ -128,10 +134,10 @@ class DataAlchemist:
         if self.working_dir:
             try:
                 for file in os.listdir(self.working_dir):
-                    if file.endswith(".csv"):
+                    if file.endswith((".csv", ".xlsx")):
                         os.remove(os.path.join(self.working_dir, file))
             except Exception as e:
-                return f"Error deleting. .csv files during rest: {e}"
+                return f"Error deleting. .csv/.xlsx files during rest: {e}"
 
         self.data = None
         self.encoders = {}
@@ -290,6 +296,47 @@ class DataAlchemist:
 
         return imputation_report.strip()
 
+
+    async def convert_to_numeric(self, column_name: str) -> str:
+        """
+        Converts values in a column to a numeric type (Float64). If values cannot be converted, set to null.
+
+        Args:
+            column_name: The name of the column to convert.
+        """
+
+        if self.data is None:
+            if not self._load_data_from_session():
+                return "Error: No data loaded. Please load data first using 'load_data'."
+
+        column_name = column_name.strip()
+        if not column_name:
+            return "Error: Column name cannot be empty."
+
+        if column_name not in self.data.columns:
+            return f"Error: Column '{column_name}' not found in the dataset."
+
+
+        try:
+
+            self.data = self.data.with_columns(
+                pl.col(column_name).cast(pl.Float64, strict=False).alias(column_name)
+            )
+
+            new_type = self.data.schema[column_name]
+
+
+        except pl.exceptions.ComputeError as e:
+            return f"Error: Column '{column_name}' could not be converted to numeric type: {e}"
+        except Exception as e:
+            return f"Unexpected error during conversion: {e}"
+
+
+
+        self._save_data()
+
+        return f"Column '{column_name}' successfully converted to numeric type ({new_type})."
+
     async def encode_categorical_features(self, encode_map: Dict[str, str], ordinal_map: Optional[Dict[str, List[str]]] = None) -> str:
         """
         Uses encoders to encode categorical columns (One-hot or ordinal)
@@ -378,6 +425,150 @@ class DataAlchemist:
 
         return encode_report.strip()
 
+    async def detect_outliers(self, outlier_map: Dict[str, str], z_score_threshold: float = 3.0) -> str:
+        """
+        Detects outliers in numerical columns using IQR or Z-score and returns a report.
+
+        Args:
+            outlier_map: A dictionary mapping column names to the detection strategy ('iqr' or 'z_score').
+            z_score_threshold: The threshold for the Z-score method (defaults to 3.0).
+        """
+        if self.data is None:
+            if not self._load_data_from_session():
+                return "Error: No data loaded. Please load data first using 'load_data'."
+
+        if not outlier_map:
+            return "No outlier map provided; no outlier detection performed."
+
+        report_lines = []
+        errors = []
+
+        for column_name, strategy in outlier_map.items():
+            if column_name not in self.data.columns:
+                errors.append(f"Error: Column '{column_name}' not found.")
+                continue
+
+            try:
+                total_rows = self.data.shape[0]
+                outliers = None
+
+                if strategy == "iqr":
+                    q1 = self.data[column_name].quantile(0.25)
+                    q3 = self.data[column_name].quantile(0.75)
+                    iqr = q3 - q1
+                    lower_bound = q1 - 1.5 * iqr
+                    upper_bound = q3 + 1.5 * iqr
+                    outliers = self.data.filter(
+                        (pl.col(column_name) < lower_bound) | (pl.col(column_name) > upper_bound))
+
+                elif strategy == "z_score":
+                    mean = self.data[column_name].mean()
+                    std = self.data[column_name].std()
+                    z_scores = (self.data[column_name] - mean) / std
+                    outliers = self.data.filter(z_scores.abs() > z_score_threshold)
+
+                else:
+                    errors.append(f"Invalid strategy '{strategy}' for column '{column_name}'.")
+                    continue
+
+                num_outliers = outliers.shape[0]
+                percentage = (num_outliers / total_rows) * 100 if total_rows > 0 else 0
+                report_lines.append(
+                    f"Column '{column_name}' ({strategy}): Found {num_outliers} outliers ({percentage:.2f}%)."
+                )
+
+            except Exception as e:
+                errors.append(f"Failed to detect outliers in column '{column_name}': {e}.")
+
+        # Build the final report
+        if not report_lines and not errors:
+            return "No outliers detected with the specified methods."
+
+        final_report = "--- Outlier Detection Report ---\n"
+        if report_lines:
+            final_report += "\n".join(report_lines)
+        if errors:
+            final_report += "\n\n--- Errors ---\n" + "\n".join(errors)
+
+        return final_report.strip()
+
+    async def handle_outliers(self, outlier_map: Dict[str, str], z_score_threshold: float = 3.0) -> str:
+        """
+        Handles outliers in numerical columns using either the IQR or Z-score method.
+
+        Args:
+            outlier_map: A dictionary mapping column names to the outlier handling strategy ('iqr' or 'z_score').
+            z_score_threshold: The threshold for the Z-score method (defaults to 3.0).
+        """
+        if self.data is None:
+            if not self._load_data_from_session():
+                return "Error: No data loaded. Please load data first using 'load_data'."
+
+        if not outlier_map:
+            return "No outlier map provided; no changes made."
+
+        allowed_strategies = ["iqr", "z_score"]
+        successful_removals = []
+        errors = []
+
+        for column_name, strategy in outlier_map.items():
+            if column_name not in self.data.columns:
+                errors.append(f"Error: Column '{column_name}' not found in the dataset.")
+                continue
+
+            if strategy not in allowed_strategies:
+                errors.append(
+                    f"Invalid strategy '{strategy}' for column '{column_name}'. Valid strategies are {allowed_strategies}")
+                continue
+
+            try:
+                initial_rows = self.data.shape[0]
+
+                if strategy == "iqr":
+                    q1 = self.data[column_name].quantile(0.25)
+                    q3 = self.data[column_name].quantile(0.75)
+                    iqr = q3 - q1
+                    lower_bound = q1 - 1.5 * iqr
+                    upper_bound = q3 + 1.5 * iqr
+                    self.data = self.data.filter(
+                        (pl.col(column_name) >= lower_bound) & (pl.col(column_name) <= upper_bound))
+
+                elif strategy == "z_score":
+                    mean = self.data[column_name].mean()
+                    std = self.data[column_name].std()
+                    self.data = self.data.filter(((self.data[column_name] - mean) / std).abs() <= z_score_threshold)
+
+                rows_removed = initial_rows - self.data.shape[0]
+                successful_removals.append(
+                    f"Successfully removed {rows_removed} outliers from column '{column_name}' using the '{strategy}' method.")
+
+            except Exception as e:
+                errors.append(f"Failed to handle outliers in column '{column_name}' with strategy '{strategy}': {e}.")
+
+        self._save_data()
+
+        if len(successful_removals) > 0:
+            removal_report = f"""
+            Successfully handled outliers in columns: {list(outlier_map.keys())}.
+
+            --- SUCCESSFUL REMOVALS ---
+            {'\n'.join(successful_removals)}
+            """
+            if errors:
+                removal_report += f"""
+                --- ERRORS ---
+                {'\n'.join(errors)}
+                """
+        else:
+            removal_report = f"""
+            Could not handle outliers in any of the specified columns.
+
+            --- ERRORS ---
+            {'\n'.join(errors)}
+            """
+
+        return removal_report.strip()
+
     async def scale_numeric(self, scale_map: Dict[str, str]) -> str:
         """
         Scales numerical features independently on train and test sets.
@@ -388,7 +579,7 @@ class DataAlchemist:
         """
         if self.X_train is None or self.X_test is None:
             if not self._load_data_from_session() or self.X_train is None:
-                return "Error: Data has not been split. Please splt the data first using 'split_data.'."
+                return "Error: Data has not been split. Please split the data first using 'split_data.'."
 
         if not scale_map:
             return "No scaling map provided; no changes made."
@@ -580,7 +771,7 @@ class DataAlchemist:
             else:
                 target_names = self.y_train.unique().sort().cast(pl.String).to_list()
 
-            class_report = classification_report(self.y_test.to_numpy(), y_pred,
+            class_report = classification_report(self.y_test.to_numpy(), y_pred, output_dict=True,
                                                  target_names=target_names if target_names else None)
 
             acc = accuracy_score(self.y_test.to_numpy(), y_pred)
@@ -614,11 +805,11 @@ session = DataAlchemist()
 @mcp.tool()
 async def alchemy_load_data(file_path: str) -> str:
     """
-Load data from a file into the session for data preprocessing.
+    Load data from a CSV or Excel file into the session for data preprocessing.
 
-Args:
-    file_path: Path of the file to load
-"""
+    Args:
+        file_path: Path of the file to load (must be .csv or .xlsx
+    """
     return await session.load_data(file_path)
 
 @mcp.tool()
@@ -671,6 +862,19 @@ async def alchemy_impute_missing_values(imputation_map: Dict[str, str]) -> str:
 
     return await session.impute_missing_values(imputation_map)
 
+
+@mcp.tool()
+async def alchemy_convert_to_numeric(column_name: str) -> str:
+    """
+    Converts values in a column to a numeric type (Float64). If values cannot be converted, set to null.
+
+    Args:
+        column_name: The name of the column to convert.
+    """
+
+    return await session.convert_to_numeric(column_name)
+
+
 @mcp.tool()
 async def alchemy_encode_categorical_features(encode_map: Dict[str, str], ordinal_map: Optional[Dict[str, List[str]]]) -> str:
     """
@@ -688,6 +892,29 @@ async def alchemy_encode_categorical_features(encode_map: Dict[str, str], ordina
     """
     return await session.encode_categorical_features(encode_map, ordinal_map)
 
+@mcp.tool()
+async def alchemy_detect_outliers(outlier_map: Dict[str, str], z_score_threshold: float = 3.0) -> str:
+    """
+    Detects and reports outliers in numerical columns without removing them.
+
+    Args:
+        outlier_map: A dictionary mapping column names to the outlier detection strategy ('iqr' or 'z_score').
+                     Example: {"age": "iqr", "income": "z_score"}
+        z_score_threshold (Optional): The Z-score threshold for outlier detection (defaults to 3.0).
+    """
+    return await session.detect_outliers(outlier_map, z_score_threshold)
+
+@mcp.tool()
+async def alchemy_handle_outliers(outlier_map: Dict[str, str], z_score_threshold: float = 3.0) -> str:
+    """
+    Handles outliers in numerical columns using either the IQR or Z-score method.
+
+    Args:
+        outlier_map: A dictionary mapping column names to the outlier handling strategy ('iqr' or 'z_score').
+                     Example: {"age": "iqr", "income": "z_score"}
+        z_score_threshold (Optional): The Z-score threshold to use for outlier detection (defaults to 3.0).
+    """
+    return await session.handle_outliers(outlier_map, z_score_threshold)
 
 @mcp.tool()
 async def alchemy_scale_numeric(scale_map: Dict[str, str]) -> str:

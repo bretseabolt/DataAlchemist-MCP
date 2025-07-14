@@ -107,7 +107,7 @@ if st.button("Reset Session"):
 
     st.rerun()
 
-uploaded_file = st.file_uploader("Upload your CSV file", type="csv")
+uploaded_file = st.file_uploader("Upload your CSV or Excel file", type=["csv", "xlsx"])
 
 if uploaded_file is not None:
     file_path = Path(MCP_FILESYSTEM_DIR) / uploaded_file.name

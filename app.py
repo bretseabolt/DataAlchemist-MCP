@@ -4,12 +4,12 @@ main_page = st.Page(
     "ui_pages/main_page.py",
     title="Data Alchemist",
     default=True,
-    icon="🧪"
+    icon="🧙‍♀️"
 )
 dashboard_page = st.Page(
     "ui_pages/data_viewer.py",
-    title="Alchemy Dashboard",
-    icon="📊"
+    title="Data Viewer",
+    icon="💾"
 )
 
 pages = [main_page, dashboard_page]
