@@ -10,7 +10,7 @@ Data Alchemist is an interactive data science tool built with Streamlit, LangGra
 
 - **Data Loading and Inspection**: Upload CSV or Excel files, inspect data (head, schema, missing values, duplicates, unique counts).
 - **Preprocessing Tools**: Impute missing values (mean/median/mode), convert columns to numeric, encode categorical features (one-hot/ordinal), detect/handle outliers (IQR/Z-score), scale features (standard/minmax/robust), drop columns.
-- **Data Splitting and Modeling**: Split data into train/test sets, train linear regression or logistic regression models, evaluate performance (R², MAE, accuracy, etc.).
+- **Data Splitting and Modeling**: Split data into train/test sets (simple train-test-split or K-Fold Cross Validation), train linear regression, logistic regression, or random forest (regression or classification) models, evaluate performance (R², MAE, accuracy, etc.).
 - **Session Management**: Persistent sessions with reset functionality; save processed data to new CSV files.
 - **Interactive UI**: Chat-based interface for natural language queries; separate data viewer page for visualizing DataFrames.
 - **Modular Architecture**: MCP servers for tool extensibility; LangGraph for agent orchestration.
