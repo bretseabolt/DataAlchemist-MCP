@@ -4,13 +4,13 @@
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Streamlit App](https://img.shields.io/badge/Streamlit-App-red.svg)](https://streamlit.io/)
 
-Data Alchemist is an interactive data science tool built with Streamlit, LangGraph, LangChain, and Model Context Protocol (MCP). It enables users to upload CSV files, perform data preprocessing, analysis, and simple machine learning tasks through a conversational AI agent. The tool leverages Polars for efficient data handling, scikit-learn for modeling, and MCP servers for modular tool integration, providing a seamless workflow for data exploration and modeling.
+Data Alchemist is an interactive data science tool built with Streamlit, LangGraph, LangChain, and Model Context Protocol (MCP). It enables users to upload CSV or Excel files, perform data preprocessing, analysis, and simple machine learning tasks through a conversational AI agent. The tool leverages Polars for efficient data handling, scikit-learn for modeling, and MCP servers for modular tool integration, providing a seamless workflow for data exploration and modeling.
 
 ## Features
 
 - **Data Loading and Inspection**: Upload CSV or Excel files, inspect data (head, schema, missing values, duplicates, unique counts).
 - **Preprocessing Tools**: Impute missing values (mean/median/mode), convert columns to numeric, encode categorical features (one-hot/ordinal), detect/handle outliers (IQR/Z-score), scale features (standard/minmax/robust), drop columns.
-- **Data Splitting and Modeling**: Split data into train/test sets, train linear regression or logistic regression models, evaluate performance (R², MAE, accuracy, etc.).
+- **Data Splitting and Modeling**: Split data into train/test sets (simple train-test-split or K-Fold Cross Validation), train linear regression, logistic regression, or random forest (regression or classification) models, evaluate performance (R², MAE, accuracy, etc.).
 - **Session Management**: Persistent sessions with reset functionality; save processed data to new CSV files.
 - **Interactive UI**: Chat-based interface for natural language queries; separate data viewer page for visualizing DataFrames.
 - **Modular Architecture**: MCP servers for tool extensibility; LangGraph for agent orchestration.
@@ -82,6 +82,7 @@ DataAlchemist-MCP/
 ├── ui_pages/
 │   ├── main_page.py        # Chat interface and agent interaction
 │   └── data_viewer.py      # DataFrame visualization page
+│   └── visualization_page.pu # Visualization (e.g., distribution plots) page
 ├── src/
 │   ├── client.py           # Graph response streaming
 │   ├── graph.py            # LangGraph agent graph builder
