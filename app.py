@@ -12,7 +12,13 @@ dashboard_page = st.Page(
     icon="💾"
 )
 
-pages = [main_page, dashboard_page]
+visualization_page = st.Page(
+    "ui_pages/visualization_page.py",
+    title="Visualizations",
+    icon="📊"
+)
+
+pages = [main_page, dashboard_page, visualization_page]
 
 pg = st.navigation(pages)
 pg.run()

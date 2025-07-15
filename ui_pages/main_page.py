@@ -8,7 +8,6 @@ import signal
 import sys
 from typing import AsyncGenerator
 import nest_asyncio
-import polars as pl
 
 nest_asyncio.apply()
 

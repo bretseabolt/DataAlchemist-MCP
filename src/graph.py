@@ -34,16 +34,15 @@ def build_agent_graph(tools: List[BaseTool] = []):
     </data>
     
     <modeling>
-    You have access to tools that allow you to split data into training and testing sets.
-    You also have tools for performing linear regression for regression and logistic regression for classification.
+    You have access to tools that allow you to split data into training and testing sets directly or 
+    to perform K-Fold Cross-Validation.
+    You also have tools for performing linear regression for regression, logistic regression for classification,
+    and random forest for both regression and classification tasks.
     </modeling>
     
     <user-interaction>
     Upon first loading a file, use your inspect data tool and give the user a short summary about that data
     and what it contains. Suggest next steps to take given the content of the data.
-    
-    When a user asks to see data (e.g., the first 5 rows, descriptive statistics, etc.), present it in a human-readable
-    format. For displaying the first 'n' rows specifically, display it as a table.
     </user-interaction>
     
     <tools>
