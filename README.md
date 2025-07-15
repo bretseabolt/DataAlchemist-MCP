@@ -82,6 +82,7 @@ DataAlchemist-MCP/
 ├── ui_pages/
 │   ├── main_page.py        # Chat interface and agent interaction
 │   └── data_viewer.py      # DataFrame visualization page
+│   └── visualization_page.pu # Visualization (e.g., distribution plots) page
 ├── src/
 │   ├── client.py           # Graph response streaming
 │   ├── graph.py            # LangGraph agent graph builder
