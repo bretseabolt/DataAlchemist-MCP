@@ -15,6 +15,11 @@ Data Alchemist is an interactive data science tool built with Streamlit, LangGra
 - **Interactive UI**: Chat-based interface for natural language queries; separate data viewer page for visualizing DataFrames.
 - **Modular Architecture**: MCP servers for tool extensibility; LangGraph for agent orchestration.
 
+## Develop Roadmap
+- **Immediate Plans:** Robust data preprocessing suite, more model options (e.g., SVM, K-Means Clustering, Decision Trees), ensemble methods, more data visualization tools, Retrieval Augmented Generated, Knowledge Graphs
+- **Intermediate Plans:** Full analysis and model report generation, tools for neural networks (TensorFlow/Pytorch), ability to run simulations on data, database implementation with SQL query tools
+- **Future Plans:** User-interface overhaul with interactive features, multi-agent system for different stages of workflow
+
 ## Installation
 
 ### Prerequisites
