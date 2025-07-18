@@ -29,7 +29,7 @@ Data Alchemist is an interactive data science tool built with Streamlit, LangGra
 ### Steps
 1. Clone the repository:
    ```
-   git clone https://github.com/yourusername/DataAlchemist-MCP.git
+   git clone https://github.com/bretseabolt/DataAlchemist-MCP.git
    cd DataAlchemist-MCP
    ```
 
