@@ -3,7 +3,7 @@
       "data_alchemist": {
         "command": "python",
         "args": [
-          "/Users/brets/EDU/DataAlchemist-MCP/src/mcp_servers/data_alchemist.py"
+          "./src/mcp_servers/data_alchemist.py"
         ],
         "transport": "stdio"
       }
